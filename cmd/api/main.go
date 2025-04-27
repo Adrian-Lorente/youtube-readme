@@ -41,6 +41,8 @@ func ExtractVideoIdFromUrl(w http.ResponseWriter, r *http.Request) string {
 // Returns the video's thumbnail.
 func RequestThumbnail(video_id string) []byte {
 	url := fmt.Sprintf(YOUTUBE_THUMBNAIL_URL, video_id)
+	log.Printf("Thumbnail url: %s", url)
+
 	resp, err := http.Get(url)
 	checkError(err)
 
@@ -85,9 +87,55 @@ func DrawText(canvas gg.Context, video_title string) gg.Context {
 	return canvas
 }
 
-// func DrawThumbnail(mutable_context gg.Context, thumbnail []byte){
-// 	panic()
-// }
+func DrawThumbnail(canvas gg.Context, raw_thumbnail []byte) gg.Context {
+	// Convert []byte to image
+	thumbnail, _, err := image.Decode(bytes.NewReader(raw_thumbnail))
+	checkError(err)
+
+	// Define variables
+	original_height := float64(thumbnail.Bounds().Dy())
+	original_width := float64(thumbnail.Bounds().Dx())
+	new_height := float64(300)
+	scale := new_height / original_height
+	new_width := original_width * scale
+
+	radius := float64(150)
+
+	// Scale image to a height of 300 keeping aspect ration
+	scaled_canvas := gg.NewContext(int(new_width), int(new_height))
+	scaled_canvas.DrawImageAnchored(thumbnail, 0, 0, 0, 0)
+	scaled_canvas.Scale(scale, scale)
+	scaled_canvas.DrawImage(thumbnail, 0, 0)
+
+	// Crop to circle
+	circle_canvas := gg.NewContext(int(radius*2), int(radius*2))
+	circle_canvas.DrawCircle(radius, radius, radius)
+	circle_canvas.Clip()
+	circle_center_x := float64(new_width) / 2
+	circle_center_y := float64(new_height) / 2
+	circle_canvas.DrawImage(scaled_canvas.Image(), int(-circle_center_x+radius), int(-circle_center_y+radius))
+
+	// Draw outer border
+	circle_canvas.SetRGB255(0, 0, 0)
+	circle_canvas.SetLineWidth(10)
+	circle_canvas.DrawCircle(radius, radius, radius)
+	circle_canvas.Stroke()
+
+	// Draw inner circle
+	circle_canvas.SetRGB255(43, 49, 55) // Background color hex #2B3137
+	circle_canvas.DrawCircle(radius, radius, radius*0.2)
+	circle_canvas.Fill()
+
+	// Draw inner border
+	circle_canvas.SetRGB255(0, 0, 0)
+	circle_canvas.SetLineWidth(radius * 0.325)
+	circle_canvas.DrawCircle(radius, radius, radius*0.2)
+	circle_canvas.Stroke()
+
+	// Draw transformed image into the general canvas
+	canvas.DrawImage(circle_canvas.Image(), 75, 40)
+	return canvas
+}
 
 // 1. Requests video title & thumbnail.
 // 2. Loads the template.
@@ -95,7 +143,7 @@ func DrawText(canvas gg.Context, video_title string) gg.Context {
 // 4. Responds with the image.
 func ProvideThumbnail(w http.ResponseWriter, r *http.Request) {
 	video_id := ExtractVideoIdFromUrl(w, r)
-	// thumbnail := RequestThumbnail(video_id)
+	thumbnail := RequestThumbnail(video_id)
 	title := RequestTitle(video_id)
 	log.Printf("Video title: %s", title)
 
@@ -106,7 +154,7 @@ func ProvideThumbnail(w http.ResponseWriter, r *http.Request) {
 
 	// Draws canvas
 	DrawText(*canvas, title)
-	// DrawThumbnail(*canvas, thumbnail)
+	DrawThumbnail(*canvas, thumbnail)
 
 	image_buffer := new(bytes.Buffer)
 	png.Encode(image_buffer, canvas.Image())
