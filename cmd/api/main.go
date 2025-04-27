@@ -9,6 +9,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/fogleman/gg"
 
@@ -174,13 +175,30 @@ func DrawPageHandler(w http.ResponseWriter, r *http.Request) {
 // Handler for "{endpoint}/".
 func HomePageHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Homepage Endpoint Hit")
+	w.Write([]byte("Welcome! Use the avaibale endpoint /draw/?video_id={your-video-id}"))
+}
+
+// Middleware for deploying
+func CORSMiddleware(next http.HandlerFunc) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set CORS headers
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		w.Header().Set("Access-Control-Allow-Methods", "GET")
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // Adds the handler and launches the server.
 func main() {
-	http.HandleFunc("/", HomePageHandler)
-	http.HandleFunc("/draw/", DrawPageHandler)
+	http.Handle("/", CORSMiddleware(http.HandlerFunc(HomePageHandler)))
+	http.Handle("/draw/", CORSMiddleware(http.HandlerFunc(DrawPageHandler)))
 
-	log.Println("Server running at localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
